@@ -5,8 +5,11 @@ uses
   crt;
 
 const
-  SEQUENTIAL_NEED_COUNT = 3;
-  FOUND__INITIAL_SIZE = 1024;
+  SEQUENTIAL_NEED_COUNT  = 3;
+  FOUND__INITIAL_SIZE:LongWord = 1024;
+  SORT_BY__TIME:word = 1;
+  SORT_BY__SIZE:word = 2;
+  SORT_BY__NAME:word = 3;
 type
   TFoundRec = record
     filename: string;
@@ -24,15 +27,19 @@ var
   i: word;
   SequentialCount: word;
   Sequential: array[1..SEQUENTIAL_NEED_COUNT] of string;
+  key, value: string;
+  SortBy: word;
 
 
 Procedure help();
 Begin
-  writeln('OnlyLast [-v|--verbose] [-i|--invert] [-d|--dry-run] DirName Mask KeepCount');
+  writeln('OnlyLast [option] DirName Mask KeepCount');
   writeln('In directory "DirName" for files matched with "Mask" keep only "KeepCount" last ones.');
-  writeln('  -v|--verbose   verbose mode');
-  writeln('  -i|--invert    keep earliest files instead of last');
-  writeln('  -d|--dry-run   do not delete files, only notuft which ones will be deleted');
+  writeln('      Options:');
+  writeln('  -v|--verbose              verbose mode');
+  writeln('  -i|--invert               keep earliest files instead of last');
+  writeln('  -d|--dry-run              do not delete files, only notuft which ones will be deleted');
+  writeln(' --sort-by=time|size|name   sorting criteria, default - time');
 End;
 
 //--------------------------Дополнить строку до необходимой длины-----------------------------
@@ -48,8 +55,56 @@ Begin
   exit(s);
 End;
 
+//---------------------Начинается ли строка с заданной последовательности-----------------------
+Function StringStartsWith(s:string; part: string): boolean;
+Begin
+  if Length(s) >= Length(part) then
+    begin
+      if copy(s, 1, Length(part)) = part then
+        exit(true);
+    end;
+  exit(false);
+End;
+
+//------Разделить --key-name=value for key на [key-name] & [value for key] -------------
+Procedure ParseOption(RawOption: string; var key: string; var value: string);
+const
+  STATE__REDING_PREFIX: word = 1;
+  STATE__READING_KEY:   word = 2;
+  STATE__READING_VALUE: word = 3;
+var
+  i: integer;
+  state: word;
+Begin
+  key := '';
+  value := '';
+  state := STATE__REDING_PREFIX;
+  for i:=1 to Length(RawOption) do
+    begin
+      if state = STATE__REDING_PREFIX then
+        begin
+          if RawOption[i] = '-' then
+            continue; //минусы перед именем параметра
+          state := STATE__READING_KEY;
+          //key := RawOption[i];
+          //continue;
+        end;
+      if state = STATE__READING_KEY then
+        begin
+          if RawOption[i] = '=' then
+            begin
+              state := STATE__READING_VALUE;
+              continue;
+            end;
+          key := key + RawOption[i];
+        end;
+      if state = STATE__READING_VALUE then
+        value := value + RawOption[i];
+    end;
+End;
+
 //-------------------------------Сортировать список найденных файлов по дате--------------------
-Procedure SortFound(FoundCount: LongWord; var Found: array of TFoundRec; ascending: boolean = true);
+Procedure SortFound(FoundCount: LongWord; var Found: array of TFoundRec; SortBy: word; ascending: boolean = true);
 var
   i, j: LongWord;
   tmp: TFoundRec;
@@ -58,10 +113,28 @@ Begin
   for i:=0 to FoundCount-2 do
     for j:=i+1 to FoundCount-1 do
       begin
-        if (ascending) and (Found[j].filetime < Found[i].filetime) then
-          NeedToSwap := true;
-        if (not ascending) and (Found[j].filetime > Found[i].filetime) then
-          NeedToSwap := true;
+        NeedToSwap := false;
+        if SortBy = SORT_BY__TIME then
+          begin
+            if (ascending) and (Found[j].filetime < Found[i].filetime) then
+              NeedToSwap := true;
+            if (not ascending) and (Found[j].filetime > Found[i].filetime) then
+              NeedToSwap := true;
+          end;
+        if SortBy = SORT_BY__SIZE then
+          begin
+            if (ascending) and (Found[j].filesize < Found[i].filesize) then
+              NeedToSwap := true;
+            if (not ascending) and (Found[j].filesize > Found[i].filesize) then
+              NeedToSwap := true;
+          end;
+        if SortBy = SORT_BY__NAME then
+          begin
+            if (ascending) and (Found[j].filename < Found[i].filename) then
+              NeedToSwap := true;
+            if (not ascending) and (Found[j].filename > Found[i].filename) then
+              NeedToSwap := true;
+          end;
         if NeedToSwap then
           begin
             //надо переставить местами
@@ -144,7 +217,7 @@ Begin
       break; //если встретился сохраняемый файл, все последующие файлы тоже остаются (закончился список удаляемых)
 End;
 
-Procedure OnlyLast(DirName: string; Mask: string; KeepCount: LongWord; Verbose: boolean; Invert: boolean; DryRun: boolean);
+Procedure OnlyLast(DirName: string; Mask: string; KeepCount: LongWord; Verbose: boolean; Invert: boolean; DryRun: boolean; SortBy: word);
 var
   SR: TSearchRec;
   FoundCount: LongWord;
@@ -155,7 +228,14 @@ Begin
   PathForSearch := DirName + DirectorySeparator + Mask;
   if Verbose then
     begin
-      writeln('For ' + PathForSearch + ' keep only ' + IntToStr(KeepCount) + ' last files.');
+      write('For ' + PathForSearch + ' keep only ' + IntToStr(KeepCount) + ' last files sorted by ');
+      if SortBy = SORT_BY__TIME then
+        write('time')
+      else if SortBy = SORT_BY__SIZE then
+        write('size')
+      else if SortBy = SORT_BY__NAME then
+        write('name');
+      writeln('.');
     end;
   FoundCount := 0;
   FoundReservedSize := FOUND__INITIAL_SIZE;
@@ -185,7 +265,7 @@ Begin
       exit;
     end;
 
-  SortFound(FoundCount, Found, not Invert);
+  SortFound(FoundCount, Found, SortBy, not Invert);
   MarkForDelete(FoundCount, Found, KeepCount);
   if Verbose then
     ListFound(FoundCount, Found, 1);
@@ -198,6 +278,7 @@ BEGIN
   Invert := false;
   DryRun := false;
   SequentialCount := 0;
+  SortBy := SORT_BY__TIME;
   for i:=1 to ParamCount do
     begin
       if (ParamStr(i) = '-h') or (ParamStr(i) = '--help') or (ParamStr(i) = '-help') or (ParamStr(i) = '/?') then
@@ -218,6 +299,23 @@ BEGIN
       if (ParamStr(i) = '-d') or (ParamStr(i) = '--dry-run') then
         begin
           DryRun := true;
+          continue;
+        end;
+      if StringStartsWith(ParamStr(i), '--sort-by') then
+        begin
+          ParseOption(ParamStr(i), key, value);
+          if value = 'time' then
+            SortBy := SORT_BY__TIME
+          else if value = 'size' then
+            SortBy := SORT_BY__SIZE
+          else if value = 'name' then
+            SortBy := SORT_BY__NAME
+          else
+            begin
+              writeln('ERROR!!! Wrong criteria for sort-by: ' + value);
+              help();
+              halt(2);
+            end;
           continue;
         end;
       if SequentialCount < SEQUENTIAL_NEED_COUNT then
@@ -244,8 +342,12 @@ BEGIN
   //writeln(Sequential[1], ' ', Sequential[2], ' ', KeepCount, ' ', Verbose, ' ', Invert, ' ', DryRun);
 
   KeepCount := StrToInt(Sequential[3]);
-  OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert, DryRun);
+  OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert, DryRun, SortBy);
 
+  //writeln(StringStartsWith('--sort-by=size', '--sort-by='));
+  //ParseOption('--sort-by=name', Sequential[1], Sequential[2]);
+  //writeln('[' + Sequential[1] + ']');
+  //writeln('[' + Sequential[2] + ']');
 END.
 
 {
