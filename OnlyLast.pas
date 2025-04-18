@@ -18,6 +18,7 @@ var
   PrintHelpAndExit: boolean;
   Verbose: boolean;
   Invert: boolean;
+  DryRun: boolean;
   KeepCount: LongWord;
   i: word;
   SequentialCount: word;
@@ -26,13 +27,14 @@ var
 
 Procedure help();
 Begin
-  writeln('OnlyLast [-v|--verbose] [-i|--invert] DirName Mask KeepCount');
+  writeln('OnlyLast [-v|--verbose] [-i|--invert] [-d|--dry-run] DirName Mask KeepCount');
   writeln('In directory "DirName" for files matched with "Mask" keep only "KeepCount" last ones.');
   writeln('  -v|--verbose   verbose mode');
   writeln('  -i|--invert    keep earliest files instead of last');
+  writeln('  -d|--dry-run   do not delete files, only notuft which ones will be deleted');
 End;
 
-//-------------------------------Сортировать список найденных файлов по дате--------------------
+//-------------------------------РЎРѕСЂС‚РёСЂРѕРІР°С‚СЊ СЃРїРёСЃРѕРє РЅР°Р№РґРµРЅРЅС‹С… С„Р°Р№Р»РѕРІ РїРѕ РґР°С‚Рµ--------------------
 Procedure SortFound(FoundCount: LongWord; var Found: array of TFoundRec; ascending: boolean = true);
 var
   i, j: LongWord;
@@ -48,7 +50,7 @@ Begin
           NeedToSwap := true;
         if NeedToSwap then
           begin
-            //надо переставить местами
+            //РЅР°РґРѕ РїРµСЂРµСЃС‚Р°РІРёС‚СЊ РјРµСЃС‚Р°РјРё
             tmp := Found[i];
             Found[i] := Found[j];
             Found[j] := tmp;
@@ -56,7 +58,7 @@ Begin
       end;
 End;
 
-//----------------------------------Вывести список найденных файлов-----------------------------
+//----------------------------------Р’С‹РІРµСЃС‚Рё СЃРїРёСЃРѕРє РЅР°Р№РґРµРЅРЅС‹С… С„Р°Р№Р»РѕРІ-----------------------------
 Procedure ListFound(FoundCount: LongWord; Found: array of TFoundRec; NumerateSince: LongWord = 1);
 var
   i: LongWord;
@@ -75,7 +77,7 @@ Begin
     end;
 End;
 
-//------------------------------------Отметить какие файлы удалить-------------------------------
+//------------------------------------РћС‚РјРµС‚РёС‚СЊ РєР°РєРёРµ С„Р°Р№Р»С‹ СѓРґР°Р»РёС‚СЊ-------------------------------
 Procedure MarkForDelete(FoundCount: LongWord; var Found: array of TFoundRec; KeepCount: LongWord);
 var
   i: LongWord;
@@ -83,7 +85,7 @@ var
 Begin
   if KeepCount < FoundCount then
     begin
-      //сохранить надо не все из найденных
+      //СЃРѕС…СЂР°РЅРёС‚СЊ РЅР°РґРѕ РЅРµ РІСЃРµ РёР· РЅР°Р№РґРµРЅРЅС‹С…
       // 0 1 2 3 4 5 6 7 8 9  {10}
       // d d d k k k k k k k  KeepCount=7
       KeepSince := FoundCount - KeepCount;
@@ -92,8 +94,8 @@ Begin
     end;
 End;
 
-//--------------------------------------Выполнить удаление отмеченных файлов-------------------------------
-Procedure DoDeleting(DirName: string; FoundCount: LongWord; Found: array of TFoundRec; Verbose: boolean);
+//--------------------------------------Р’С‹РїРѕР»РЅРёС‚СЊ СѓРґР°Р»РµРЅРёРµ РѕС‚РјРµС‡РµРЅРЅС‹С… С„Р°Р№Р»РѕРІ-------------------------------
+Procedure DoDeleting(DirName: string; FoundCount: LongWord; Found: array of TFoundRec; Verbose: boolean; DryRun: boolean);
 var
   i: LongWord;
   path: string;
@@ -102,15 +104,16 @@ Begin
     if Found[i].NeedToDelete then
       begin
         path := DirName + DirectorySeparator + Found[i].filename;
-        if Verbose then
+        if (Verbose) or (DryRun) then
           writeln('delete: ' + path);
-        DeleteFile(path);
+        if not DryRun then
+          DeleteFile(path);
       end
     else
-      break; //если встретился сохраняемый файл, все последующие файлы тоже остаются (закончился список удаляемых)
+      break; //РµСЃР»Рё РІСЃС‚СЂРµС‚РёР»СЃСЏ СЃРѕС…СЂР°РЅСЏРµРјС‹Р№ С„Р°Р№Р», РІСЃРµ РїРѕСЃР»РµРґСѓСЋС‰РёРµ С„Р°Р№Р»С‹ С‚РѕР¶Рµ РѕСЃС‚Р°СЋС‚СЃСЏ (Р·Р°РєРѕРЅС‡РёР»СЃСЏ СЃРїРёСЃРѕРє СѓРґР°Р»СЏРµРјС‹С…)
 End;
 
-Procedure OnlyLast(DirName: string; Mask: string; KeepCount: LongWord; Verbose: boolean; Invert: boolean);
+Procedure OnlyLast(DirName: string; Mask: string; KeepCount: LongWord; Verbose: boolean; Invert: boolean; DryRun: boolean);
 var
   SR: TSearchRec;
   FoundCount: LongWord;
@@ -130,11 +133,11 @@ Begin
     begin
       repeat
         if SR.attr and faDirectory = faDirectory then
-          continue; //пропустить каталоги
+          continue; //РїСЂРѕРїСѓСЃС‚РёС‚СЊ РєР°С‚Р°Р»РѕРіРё
         //writeln(SR.name:40, SR.size:15);
         if FoundCount = FoundReservedSize then
           begin
-            //увеличить память под список найденных элементов
+            //СѓРІРµР»РёС‡РёС‚СЊ РїР°РјСЏС‚СЊ РїРѕРґ СЃРїРёСЃРѕРє РЅР°Р№РґРµРЅРЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ
             FoundReservedSize := FoundReservedSize * 2;
             SetLength(Found, FoundReservedSize);
           end;
@@ -154,13 +157,14 @@ Begin
   MarkForDelete(FoundCount, Found, KeepCount);
   if Verbose then
     ListFound(FoundCount, Found, 1);
-  DoDeleting(DirName, FoundCount, Found, Verbose);
+  DoDeleting(DirName, FoundCount, Found, Verbose, DryRun);
 End;
 
 BEGIN
   PrintHelpAndExit := false;
   Verbose := false;
   Invert := false;
+  DryRun := false;
   SequentialCount := 0;
   for i:=1 to ParamCount do
     begin
@@ -179,9 +183,14 @@ BEGIN
           Invert := true;
           continue;
         end;
+      if (ParamStr(i) = '-d') or (ParamStr(i) = '--dry-run') then
+        begin
+          DryRun := true;
+          continue;
+        end;
       if SequentialCount < SEQUENTIAL_NEED_COUNT then
         begin
-          //необходимое количество параметров ещё не получено
+          //РЅРµРѕР±С…РѕРґРёРјРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ РїР°СЂР°РјРµС‚СЂРѕРІ РµС‰С‘ РЅРµ РїРѕР»СѓС‡РµРЅРѕ
           Inc(SequentialCount);
           Sequential[SequentialCount] := ParamStr(i);
         end;
@@ -200,10 +209,10 @@ BEGIN
       halt(1);
     end;
   
-  writeln(Sequential[1], ' ', Sequential[2], ' ', KeepCount, ' ', Verbose, ' ', Invert);
+  writeln(Sequential[1], ' ', Sequential[2], ' ', KeepCount, ' ', Verbose, ' ', Invert, ' ', DryRun);
 
   KeepCount := StrToInt(Sequential[3]);
-  OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert);
+  OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert, DryRun);
 END.
 
 {
