@@ -38,8 +38,8 @@ Begin
   writeln('      Options:');
   writeln('  -v|--verbose              verbose mode');
   writeln('  -i|--invert               keep earliest files instead of last');
-  writeln('  -d|--dry-run              do not delete files, only notuft which ones will be deleted');
-  writeln(' --sort-by=time|size|name   sorting criteria, default - time');
+  writeln('  -d|--dry-run              do not delete files, only notify which ones will be deleted');
+  writeln(' --sort-by=time|size|name   sorting criteria besides the time, default - time');
 End;
 
 //--------------------------Дополнить строку до необходимой длины-----------------------------
