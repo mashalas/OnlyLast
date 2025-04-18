@@ -11,6 +11,7 @@ type
   TFoundRec = record
     filename: string;
     filetime: TDateTime;
+    filesize: Int64;
     NeedToDelete: boolean;
   end;
 
@@ -32,6 +33,19 @@ Begin
   writeln('  -v|--verbose   verbose mode');
   writeln('  -i|--invert    keep earliest files instead of last');
   writeln('  -d|--dry-run   do not delete files, only notuft which ones will be deleted');
+End;
+
+//--------------------------Дополнить строку до необходимой длины-----------------------------
+Function SetStringLength(s: string; TargetLength: word; add: string; AddBefore: boolean): string;
+Begin
+  while Length(s) < TargetLength do
+    begin
+      if AddBefore then
+        s := add + s
+      else
+        s := s + add;
+    end;
+  exit(s);
 End;
 
 //-------------------------------Сортировать список найденных файлов по дате--------------------
@@ -62,12 +76,29 @@ End;
 Procedure ListFound(FoundCount: LongWord; Found: array of TFoundRec; NumerateSince: LongWord = 1);
 var
   i: LongWord;
+  SizeStr: string;
+  MaxSize: Int64;
+  MaxSizeStr: string;
+  MaxSizeStrLen: integer;
 Begin
+  //определить максимальный размер выбранных файлов, чтобы строку с размером файла дополнять до этого же количества символов
+  MaxSize := Found[0].filesize;
+  for i := 1 to FoundCount-1 do
+    if Found[i].filesize > MaxSize then
+      MaxSize := Found[i].filesize;
+  MaxSizeStr := IntToStr(MaxSize);
+  MaxSizeStrLen := Length(MaxSizeStr);
+
   for i := 0 to FoundCount-1 do
     begin
       write(NumerateSince+i);
       write(')');
-      write('  [' + DateTimeToStr(Found[i].filetime) + ']');
+      write(' [' + DateTimeToStr(Found[i].filetime) + ']');
+      
+      SizeStr := IntToStr(Found[i].filesize);
+      SizeStr := SetStringLength(SizeStr, MaxSizeStrLen, ' ', true);
+      write(' ' + SizeStr);
+
       write('  ' + Found[i].filename);
       if Found[i].NeedToDelete then
         write('  delete')
@@ -143,6 +174,7 @@ Begin
           end;
         Found[FoundCount].filename := SR.name;
         Found[FoundCount].filetime := SR.TimeStamp;
+        Found[FoundCount].filesize := SR.size;
         Found[FoundCount].NeedToDelete := false;
         Inc(FoundCount);
       until FindNext(SR) <> 0;
@@ -209,10 +241,11 @@ BEGIN
       halt(1);
     end;
   
-  writeln(Sequential[1], ' ', Sequential[2], ' ', KeepCount, ' ', Verbose, ' ', Invert, ' ', DryRun);
+  //writeln(Sequential[1], ' ', Sequential[2], ' ', KeepCount, ' ', Verbose, ' ', Invert, ' ', DryRun);
 
   KeepCount := StrToInt(Sequential[3]);
   OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert, DryRun);
+
 END.
 
 {
