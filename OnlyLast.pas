@@ -10,6 +10,10 @@ const
   SORT_BY__TIME:word = 1;
   SORT_BY__SIZE:word = 2;
   SORT_BY__NAME:word = 3;
+
+  ERR__WRONG_REQUIRED_ARGUMENTS_COUNT:word = 1;
+  ERR__WRONG_SORT_BY:word = 2;
+
 type
   TFoundRec = record
     filename: string;
@@ -29,17 +33,48 @@ var
   Sequential: array[1..SEQUENTIAL_NEED_COUNT] of string;
   key, value: string;
   SortBy: word;
+  ParamValue: string;
 
 
 Procedure help();
 Begin
-  writeln('OnlyLast [option] DirName Mask KeepCount');
-  writeln('In directory "DirName" for files matched with "Mask" keep only "KeepCount" last ones.');
-  writeln('      Options:');
-  writeln('  -v|--verbose              verbose mode');
-  writeln('  -i|--invert               keep earliest files instead of last');
-  writeln('  -d|--dry-run              do not delete files, only notify which ones will be deleted');
-  writeln(' --sort-by=time|size|name   sorting criteria besides the time, default - time');
+  writeln('NAME');
+  writeln('        OnlyLast - keep in a directory only <N> files matched with the mask');
+  writeln('');
+  writeln('SYNOPSIS');
+  writeln('        OnlyLast [OPTIONS]... DirName Mask KeepCount');
+  writeln('');
+  writeln('OPTIONS');
+  writeln('        -h|--help');
+  writeln('               print this help and exit');
+  writeln('');
+  writeln('        -v|--verbose');
+  writeln('               verbose mode');
+  writeln('');
+  writeln('        -i|--invert');
+  writeln('               keep earliest files instead of last');
+  writeln('');
+  writeln('        -d|--dry-run');
+  writeln('               do not delete files, only notify which ones will be deleted');
+  writeln('');
+  writeln('        -s|--sort-by time|size|name');
+  writeln('               sorting criteria besides the time, time - is default value');
+  writeln('');
+  writeln('POSITIONAL ARGUMENTS');
+  writeln('        DirName');
+  writeln('               directory where to keep only last files');
+  writeln('');
+  writeln('        Mask');
+  writeln('               mask for selecting files. Symbols "*" and "?" allowed.');
+  writeln('');
+  writeln('        KeepCount');
+  writeln('               how many matched files keep in the directory');
+  writeln('');
+  writeln('URL');
+  writeln('        https://github.com/mashalas/OnlyLast');
+  writeln('');
+  writeln('LICENSE');
+  writeln('        GPV-3.0');
 End;
 
 //--------------------------Дополнить строку до необходимой длины-----------------------------
@@ -217,6 +252,65 @@ Begin
       break; //если встретился сохраняемый файл, все последующие файлы тоже остаются (закончился список удаляемых)
 End;
 
+Function _CheckOption(name: string; var ActiveParamIndex: word; var value: string; IsFlag: boolean = false): boolean;
+var
+  a: string;
+Begin
+  //if name = '' then
+  //  exit(false);
+  a := ParamStr(ActiveParamIndex);
+  if IsFlag then
+    begin
+      if a = name then
+        exit(true);
+      exit(false);
+    end;
+  //проверяемый аргумент командной строки не является логическим флагом, значит должен содержать значение
+  //-k value
+  //-k=value
+  //--key=value
+  if a = name then
+    begin
+      if ActiveParamIndex >= ParamCount then
+        exit(false); //больше нет аргументов, где бы можно было взять значение
+      //-k value    --key value
+      Inc(ActiveParamIndex);
+      value := ParamStr(ActiveParamIndex);
+      exit(true);
+    end;
+  if (Length(a) >= Length(name)+2) and (a[Length(name)+1] = '=') then
+    begin
+      //--key=value
+      //12345678901 {11}
+      //-k=v  {4}
+      value := copy(a, Length(name)+2, Length(a)-Length(name)-1);
+      //writeln(' compare ' + a + ' with ' + name + '|' + a + '|' + value + ']');
+      exit(true);
+    end;
+  exit(false);
+End;
+
+Function CheckOption(ShortName: string; LongName: string; var ActiveParamIndex: word; var value: string; IsFlag: boolean = false): boolean;
+var
+  matched: boolean;
+Begin
+  matched := false;
+  value := '';
+  if ShortName <> '' then
+    begin
+      matched := _CheckOption(ShortName, ActiveParamIndex, value, IsFlag);
+      if matched then
+        exit(true);
+    end;
+  if LongName <> '' then
+    begin
+      matched := _CheckOption(LongName, ActiveParamIndex, value, IsFlag);
+      if matched then
+        exit(true);
+    end;
+  exit(false);
+End;
+
 Procedure OnlyLast(DirName: string; Mask: string; KeepCount: LongWord; Verbose: boolean; Invert: boolean; DryRun: boolean; SortBy: word);
 var
   SR: TSearchRec;
@@ -279,50 +373,43 @@ BEGIN
   DryRun := false;
   SequentialCount := 0;
   SortBy := SORT_BY__TIME;
-  for i:=1 to ParamCount do
+
+  i := 0;
+  while i < ParamCount do
     begin
-      if (ParamStr(i) = '-h') or (ParamStr(i) = '--help') or (ParamStr(i) = '-help') or (ParamStr(i) = '/?') then
+      Inc(i);
+      //writeln(i, ' : ', ParamStr(i));
+      if CheckOption('-h', '--help', i, ParamValue, true) then
+        PrintHelpAndExit := true
+      else if CheckOption('/?', '-help', i, ParamValue, true) then
+        PrintHelpAndExit := true
+      else if CheckOption('-v', '--verbose', i, ParamValue, true) then
+        Verbose := true
+      else if CheckOption('-i', '--invert', i, ParamValue, true) then
+        Invert := true
+      else if CheckOption('-d', '--dry-run', i, ParamValue, true) then
+        DryRun := true
+      else if CheckOption('', '--sort-by', i, ParamValue) then
         begin
-          PrintHelpAndExit := true;
-          break;
-        end;
-      if (ParamStr(i) = '-v') or (ParamStr(i) = '--verbose') then
-        begin
-          Verbose := true;
-          continue;
-        end;
-      if (ParamStr(i) = '-i') or (ParamStr(i) = '--invert') then
-        begin
-          Invert := true;
-          continue;
-        end;
-      if (ParamStr(i) = '-d') or (ParamStr(i) = '--dry-run') then
-        begin
-          DryRun := true;
-          continue;
-        end;
-      if StringStartsWith(ParamStr(i), '--sort-by') then
-        begin
-          ParseOption(ParamStr(i), key, value);
-          if value = 'time' then
-            SortBy := SORT_BY__TIME
-          else if value = 'size' then
-            SortBy := SORT_BY__SIZE
-          else if value = 'name' then
-            SortBy := SORT_BY__NAME
+          case ParamValue of
+            'name': SortBy := SORT_BY__NAME;
+            'time': SortBy := SORT_BY__TIME;
+            'size': SortBy := SORT_BY__SIZE
           else
-            begin
-              writeln('ERROR!!! Wrong criteria for sort-by: ' + value);
-              help();
-              halt(2);
-            end;
+            writeln('ERROR!!! Wrong value for "sort-by"');
+            help();
+            halt(ERR__WRONG_SORT_BY);
+          end;
           continue;
-        end;
-      if SequentialCount < SEQUENTIAL_NEED_COUNT then
+        end
+      else
         begin
-          //необходимое количество параметров ещё не получено
-          Inc(SequentialCount);
-          Sequential[SequentialCount] := ParamStr(i);
+          if SequentialCount < SEQUENTIAL_NEED_COUNT then
+            begin
+              //необходимое количество параметров ещё не получено
+              Inc(SequentialCount);
+              Sequential[SequentialCount] := ParamStr(i);
+            end;
         end;
     end;
 
@@ -336,18 +423,14 @@ BEGIN
     begin
       writeln('ERROR!!! Not enought parameters');
       help();
-      halt(1);
+      halt(ERR__WRONG_REQUIRED_ARGUMENTS_COUNT);
     end;
   
-  //writeln(Sequential[1], ' ', Sequential[2], ' ', KeepCount, ' ', Verbose, ' ', Invert, ' ', DryRun);
-
   KeepCount := StrToInt(Sequential[3]);
-  OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert, DryRun, SortBy);
+  //writeln(Sequential[1], ' ', Sequential[2], ' ', Sequential[3]);
+  //writeln(KeepCount, ' ', Verbose, ' ', Invert, ' ', DryRun, ' ', SortBy);
 
-  //writeln(StringStartsWith('--sort-by=size', '--sort-by='));
-  //ParseOption('--sort-by=name', Sequential[1], Sequential[2]);
-  //writeln('[' + Sequential[1] + ']');
-  //writeln('[' + Sequential[2] + ']');
+  OnlyLast(Sequential[1], Sequential[2], KeepCount, Verbose, Invert, DryRun, SortBy);
 END.
 
 {
